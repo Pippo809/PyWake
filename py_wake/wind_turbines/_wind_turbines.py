@@ -154,7 +154,7 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
         if ax is None:
             ax = plt.gca()
         markers = np.array(list("213v^<>o48spP*hH+xXDd|_"))
-        colors = ['k', 'gray', 'r', 'g'] * 5
+        colors = ['gray', 'r', 'g', 'k'] * 5
 
         from matplotlib.patches import Circle
         assert len(x) == len(y)
@@ -182,7 +182,8 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
 
         for i, (x_, y_, r) in enumerate(zip(x, y, R)):
             ax.annotate(i, (x_ + r, y_ + r), fontsize=7)
-        # ax.legend(loc=1)
+        ax.legend(loc=1)
+        ax.axis('equal')
 
     def plot_yz(self, y, z=None, h=None, types=None, wd=270, yaw=0, tilt=0, normalize_with=1, ax=None):
         """Plot wind farm layout in yz-plane including type name and diameter
@@ -215,7 +216,7 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
         if ax is None:
             ax = plt.gca()
         markers = np.array(list("213v^<>o48spP*hH+xXDd|_"))
-        colors = ['k', 'gray', 'r', 'g', 'k'] * 5
+        colors = ['gray', 'k', 'r', 'g', 'k'] * 5
 
         yaw = np.zeros_like(y) + yaw
         tilt = np.zeros_like(y) + tilt
@@ -243,26 +244,22 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
 
         for i, (y_, z_, h_, d) in enumerate(zip(y, z, h, D)):
             ax.annotate(i, (y_ + d / 2, z_ + h_ + d / 2), fontsize=7)
-        # ax.legend(loc=1)
+        ax.legend(loc=1)
+        ax.axis('equal')
 
     def plot(self, x, y, type=None, wd=None, yaw=0, tilt=0, normalize_with=1, ax=None):
         return self.plot_xy(x, y, type, wd, yaw, tilt, normalize_with, ax)
 
-    def plot_power_ct(self, ax=None, ws=np.linspace(0, 25, 1000), **wt_kwargs):
+    def plot_power_ct(self, ax=None, **wt_kwargs):
         import matplotlib.pyplot as plt
+        ws = np.linspace(0, 25, 1000)
         if ax is None:
             ax = plt.gca()
         power, ct = self.power_ct(ws, **wt_kwargs)
-        ax.plot(ws, power, label='Power')
+        ax.plot(ws, power)
         ax.grid()
-        ax.set_title(self.name())
-        ax.set_xlabel('Wind speed [m/s]')
-        ax.set_ylabel('Power [W]')
         ax2 = ax.twinx()
-        ax2.plot(ws, ct, '--', label='$$C_T$$')
-        ax2.set_ylabel('Thrust coefficient')
-        axs = [ax, ax2]
-        return axs
+        ax2.plot(ws, ct, '--')
 
     @classmethod
     def from_WindTurbine_lst(cls, wt_lst):
@@ -379,8 +376,8 @@ class WindTurbine(WindTurbines):
             Wind turbine powerCtFunction
         """
         self._names = np.array([name])
-        self._diameters = np.array([diameter], dtype=float)
-        self._hub_heights = np.array([hub_height], dtype=float)
+        self._diameters = np.array([diameter])
+        self._hub_heights = np.array([hub_height])
         self.powerCtFunction = powerCtFunction
         for k, v in windTurbineFunctions.items():
             setattr(self, k, v)

@@ -102,13 +102,11 @@ class SimpleYawModel(AdditionalModel):
             output_keys=['power', 'ct'])
 
     def __call__(self, f, ws, yaw=None, tilt=None, **kwargs):
-        if yaw is not None and tilt is not None:
-            y, t = gradients.deg2rad(fix_shape(yaw, ws, True)), gradients.deg2rad(fix_shape(tilt, ws, True))
-            co = np.cos(np.arcsin(np.sqrt((np.sin(y) * np.cos(t))**2 + np.sin(t)**2)))
-        elif yaw is not None:
-            co = np.cos(gradients.deg2rad(fix_shape(yaw, ws, True)))
-        elif tilt is not None:
-            co = np.cos(gradients.deg2rad(fix_shape(tilt, ws, True)))
+        co = 1
+        if yaw is not None:
+            co *= np.cos(gradients.deg2rad(fix_shape(yaw, ws, True)))
+        if tilt is not None:
+            co *= np.cos(gradients.deg2rad(fix_shape(tilt, ws, True)))
         power_ct_arr = f(ws * co, **kwargs)  # calculate for reduced ws (ws projection on rotor)
         if kwargs['run_only'] == 1:  # ct
             # multiply ct by cos(yaw)**2 to compensate for reduced thrust
@@ -497,8 +495,7 @@ class CubePowerSimpleCt(PowerCtFunctions):
 
 class PowerCtSurrogate(PowerCtFunction, FunctionSurrogates):
     def __init__(self, power_surrogate, power_unit, ct_surrogate, input_parser, additional_models=default_additional_models):
-        assert (not hasattr(power_surrogate, 'input_channel_names') or
-                power_surrogate.input_channel_names == ct_surrogate.input_channel_names)
+        assert power_surrogate.input_channel_names == ct_surrogate.input_channel_names
 
         PowerCtFunction.__init__(
             self,
@@ -511,21 +508,3 @@ class PowerCtSurrogate(PowerCtFunction, FunctionSurrogates):
 
     def _power_ct(self, ws, run_only=slice(None), **kwargs):
         return FunctionSurrogates.__call__(self, ws, run_only, **kwargs)
-
-
-class PowerCtWindPro(PowerCtTabular):
-    def __init__(self, ws_power_cp_str, ws_ct_str, power_idle=0, ct_idle=0, method='linear',
-                 additional_models=default_additional_models):
-        def read(s):
-            lines = s.strip().replace(",", "").split("\n")
-            if lines[0].startswith('Vindhastighed'):
-                lines = lines[1:]
-            return np.array([l.split() for l in lines], dtype=float).T
-        ws, power, cp = read(ws_power_cp_str)
-        ws, ct = read(ws_ct_str)
-        ws_cutin = ws[0]
-        ws_cutout = ws[-1]
-
-        PowerCtTabular.__init__(self, ws, power, 'kW', ct, ws_cutin=ws_cutin, ws_cutout=ws_cutout,
-                                power_idle=power_idle, ct_idle=ct_idle, method=method,
-                                additional_models=additional_models)

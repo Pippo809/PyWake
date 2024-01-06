@@ -1,9 +1,11 @@
 from numpy import newaxis as na
 from py_wake import np
-from py_wake.deflection_models.deflection_model import DeflectionIntegrator
+from py_wake.deflection_models import DeflectionModel
+from py_wake.utils.gradients import hypot
+from py_wake.utils import gradients
 
 
-class GCLHillDeflection(DeflectionIntegrator):
+class GCLHillDeflection(DeflectionModel):
     """Deflection based on Hill's ring vortex theory
 
     Implemented according to
@@ -23,30 +25,41 @@ class GCLHillDeflection(DeflectionIntegrator):
             Wake deficit model used to calculate the center wake deficit needed by this model.
             If None, the windFarmModel.wake_deficitModel is used
         """
-        DeflectionIntegrator.__init__(self, N)
         self._wake_deficitModel = wake_deficitModel
+        self.N = N
 
     @property
     def args4deflection(self):
-        return (DeflectionIntegrator.args4deflection.fget(self) |  # @UndefinedVariable
+        return (DeflectionModel.args4deflection.fget(self) |  # @UndefinedVariable
                 set(self.wake_deficitModel.args4deficit) - {'dw_ijlk', 'hcw_ijlk', 'cw_ijlk', 'dh_ijlk'})
 
     @property
     def wake_deficitModel(self):
         return self._wake_deficitModel or self.windFarmModel.wake_deficitModel
 
-    def get_deflection_rate(self, theta_ilk, dw_ijlkx, WS_eff_ilk, yaw_ilk, tilt_ilk, IJLK, **kwargs):
+    def calc_deflection(self, WS_eff_ilk, dw_ijlk, hcw_ijlk, dh_ijlk, yaw_ilk, tilt_ilk, IJLK, **kwargs):
+
+        dw_lst = (np.logspace(0, 1.1, self.N) - 1) / (10**1.1 - 1)
+        dw_ijlkx = dw_ijlk[..., na] * dw_lst[na, na, na, na, :]
         z = np.zeros_like(dw_ijlkx)
-        deficit_kwargs = {k: v[..., na] for k, v in kwargs.items()}
-        deficit_kwargs.update(dict(WS_eff_ilk=(WS_eff_ilk * np.cos(np.deg2rad(yaw_ilk)))[..., na],
-                                   dw_ijlk=dw_ijlkx, hcw_ijlk=z, cw_ijlk=z, dh_ijlk=z,
-                                   tilt_ilk=tilt_ilk[..., na],
-                                   IJLK=IJLK,))
-        U_w_ijlx = self.wake_deficitModel.calc_deficit(**deficit_kwargs)
-        U_d_ijlkx = 0.4 * U_w_ijlx * np.sin(theta_ilk)[:, na, :, :, na]
+        U_w_ijlx = self.wake_deficitModel.calc_deficit(
+            WS_eff_ilk=(WS_eff_ilk * np.cos(np.deg2rad(yaw_ilk)))[..., na],
+            dw_ijlk=dw_ijlkx, hcw_ijlk=z, cw_ijlk=z, dh_ijlk=z,
+            tilt_ilk=tilt_ilk[..., na],
+            IJLK=IJLK,
+            **{k: v[..., na] for k, v in kwargs.items()})
+
+        theta_yaw_ilk, theta_tilt_ilk = np.deg2rad(yaw_ilk), np.deg2rad(-tilt_ilk)
+        theta_ilk = hypot(theta_yaw_ilk, theta_tilt_ilk)
+        theta_deflection_ilk = np.arctan2(theta_tilt_ilk, theta_yaw_ilk)
+
+        U_d_ijlkx = -0.4 * U_w_ijlx * np.sin(theta_ilk)[:, na, :, :, na]
         U_a_ijlkx = WS_eff_ilk[:, na, :, :, na] - 0.4 * U_w_ijlx * np.cos(theta_ilk)[:, na, :, :, na]
 
-        return U_d_ijlkx / U_a_ijlkx
+        deflection_ijlk = gradients.trapz(U_d_ijlkx / U_a_ijlkx, dw_ijlkx, axis=4)
+        self.hcw_ijlk = hcw_ijlk - deflection_ijlk * np.cos(theta_deflection_ilk[:, na])
+        self.dh_ijlk = dh_ijlk + deflection_ijlk * np.sin(theta_deflection_ilk[:, na])
+        return dw_ijlk, self.hcw_ijlk, self.dh_ijlk
 
 
 def main():

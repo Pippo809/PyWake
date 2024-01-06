@@ -12,7 +12,6 @@ from py_wake.tests import npt
 import pytest
 from xarray.core.dataarray import DataArray
 from matplotlib.patches import Ellipse
-from py_wake.deficit_models.utils import ct2a_mom1d
 
 
 class DummyFloatingModifier(InputModifierModel):
@@ -82,8 +81,7 @@ class FloatingV80(V80):
 
 
 def run_floating(wfm_cls, pitch, displacement):
-    wfm = wfm_cls(UniformSite(), FloatingV80(), ZongGaussianDeficit(ct2a=ct2a_mom1d),
-                  turbulenceModel=CrespoHernandez(ct2a=ct2a_mom1d),
+    wfm = wfm_cls(UniformSite(), FloatingV80(), ZongGaussianDeficit(), turbulenceModel=CrespoHernandez(),
                   deflectionModel=JimenezWakeDeflection(),
                   inputModifierModels=DummyFloatingModifier(pitch=pitch, displacement=displacement))
     sim_res = wfm([0, 300, 600], [0, 0, 0], wd=[270, 280], ws=[5, 10, 15, 20], yaw=0, tilt=0)
@@ -93,12 +91,12 @@ def run_floating(wfm_cls, pitch, displacement):
 
 
 @pytest.mark.parametrize('wfm_cls,pitch,displacement,ref', [
-    (PropagateDownwind, False, False, [10., 6.51877627, 6.289912]),
-    (All2AllIterative, False, False, [10., 6.51877627, 6.289912]),
-    (PropagateDownwind, True, False, [10., 7.450013, 7.108338]),
-    (All2AllIterative, True, False, [10., 7.450013, 7.108338]),
-    (All2AllIterative, False, True, [10., 6.457691, 6.272679]),
-    (All2AllIterative, True, True, [10., 7.404978, 7.095028])
+    (PropagateDownwind, False, False, [10., 6.51877627, 6.0475109]),
+    (All2AllIterative, False, False, [10., 6.51877627, 6.0475109]),
+    (PropagateDownwind, True, False, [10., 7.4433646, 6.91514802]),
+    (All2AllIterative, True, False, [10., 7.4433646, 6.91514802]),
+    (All2AllIterative, False, True, [10., 6.457691, 6.023898]),
+    (All2AllIterative, True, True, [10., 7.398151, 6.896803])
 ])
 def test_floating_pitch_modifier(wfm_cls, pitch, displacement, ref):
 

@@ -20,14 +20,13 @@ def test_get_models():
     assert cls_in(SelfSimilarityDeficit, get_models(BlockageDeficitModel))
 
     assert (sorted([n.__name__ for n in get_models(SuperpositionModel)]) ==
-            ['CumulativeWakeSum', 'LinearSum', 'MaxSum', 'SquaredSum', 'WeightedSum'])
+            ['LinearSum', 'MaxSum', 'SquaredSum', 'WeightedSum'])
 
 
 def test_get_signature():
     assert (get_signature(NOJDeficit) ==
-            "NOJDeficit(ct2a=ct2a_madsen, k=0.1, rotorAvgModel=AreaOverlapAvgModel(), groundModel=None)")
+            "NOJDeficit(k=0.1, rotorAvgModel=AreaOverlapAvgModel(), groundModel=None)")
     assert get_signature(NOJDeficit, indent_level=1) == """NOJDeficit(
-    ct2a=ct2a_madsen,
     k=0.1,
     rotorAvgModel=AreaOverlapAvgModel(),
     groundModel=None)"""
@@ -35,8 +34,8 @@ def test_get_signature():
             "STF2017TurbulenceModel(c=[1.5, 0.8], addedTurbulenceSuperpositionModel=LinearSum(), weight_function=FrandsenWeight(), rotorAvgModel=None, groundModel=None)")
     assert (get_signature(STF2017TurbulenceModel, {'addedTurbulenceSuperpositionModel': SqrMaxSum}) ==
             "STF2017TurbulenceModel(c=[1.5, 0.8], addedTurbulenceSuperpositionModel=SqrMaxSum(), weight_function=FrandsenWeight(), rotorAvgModel=None, groundModel=None)")
-    assert (get_signature(XRSite) ==
-            "XRSite(ds, initial_position=None, interp_method='linear', shear=None, distance=None, default_ws=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], bounds='check')")
+    assert(get_signature(XRSite) ==
+           "XRSite(ds, initial_position=None, interp_method='linear', shear=None, distance=None, default_ws=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25], bounds='check')")
 
 
 def test_get_model_input():

@@ -208,10 +208,8 @@ class WindFarmModel(ABC):
             norm = 1
 
         if with_wake_loss is False:
-            wd, ws = self.site.get_defaults(wd, ws)
-            I, L, K, = len(x), len(np.atleast_1d(wd)), len(np.atleast_1d(ws))
-            power_ilk = np.broadcast_to(self.windTurbines.power(ws=localWind.WS_ilk,
-                                                                **self.get_wt_kwargs(localWind.TI.ilk(), kwargs_ilk)), (I, L, K))
+            power_ilk = self.windTurbines.power(ws=localWind.WS_ilk,
+                                                **self.get_wt_kwargs(localWind.TI.ilk(), kwargs_ilk))
         return (power_ilk * P_ilk / norm * 24 * 365 * 1e-9).sum()
 
     @abstractmethod
@@ -272,11 +270,11 @@ class WindFarmModel(ABC):
     def _multiprocessing_chunks(self, wd, ws, time,
                                 n_cpu, wd_chunks, ws_chunks, **kwargs):
         n_cpu = n_cpu or multiprocessing.cpu_count()
-        wd_chunks = int(np.minimum(wd_chunks or n_cpu, len(wd)))
-        ws_chunks = int(np.minimum(ws_chunks or 1, len(ws)))
+        wd_chunks = np.minimum(wd_chunks or n_cpu, len(wd))
+        ws_chunks = np.minimum(ws_chunks or 1, len(ws))
 
         if time is not False:
-            wd_chunks = ws_chunks = int(np.maximum(ws_chunks, wd_chunks))
+            wd_chunks = ws_chunks = np.maximum(ws_chunks, wd_chunks)
 
         wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
         ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
@@ -295,7 +293,8 @@ class WindFarmModel(ABC):
             if time is True:
                 time = np.arange(len(wd))
             slice_lst = [(slice(wd_i0, wd_i1), slice(wd_i0, wd_i1))
-                         for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:])]
+                         for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:])
+                         ]
 
         I, L, K = len(kwargs.get('x_ilk', kwargs.get('x'))), len(wd), len(ws)
 
@@ -649,7 +648,10 @@ class SimulationResult(xr.Dataset):
         x_j, y_j, h_j = X.flatten(), Y.flatten(), H.flatten()
 
         wd, ws = self._wd_ws(wd, ws)
-        lw_j, WS_eff_jlk, TI_eff_jlk = self.windFarmModel._flow_map(x_j, y_j, h_j, self.sel(wd=wd, ws=ws))
+        lw_j, WS_eff_jlk, TI_eff_jlk = self.windFarmModel._flow_map(
+            x_j, y_j, h_j,
+            self.sel(wd=wd, ws=ws)
+        )
 
         return FlowBox(self, X, Y, H, lw_j, WS_eff_jlk, TI_eff_jlk)
 
@@ -692,8 +694,6 @@ class SimulationResult(xr.Dataset):
         X, Y, x_j, y_j, h_j, plane = self._get_grid(grid)
         wd, ws = self._wd_ws(wd, ws)
         sim_res = self.sel(wd=wd, ws=ws)
-        for k in self.__slots__:
-            setattr(sim_res, k, getattr(self, k))
         n_cpu = n_cpu or multiprocessing.cpu_count()
         wd_chunks = np.minimum(wd_chunks or n_cpu, len(wd))
         if n_cpu != 1:
@@ -727,7 +727,7 @@ class SimulationResult(xr.Dataset):
         else:  # pragma: no cover
             raise NotImplementedError()
 
-    def flow_map(self, grid=None, wd=None, ws=None, time=None, D_dst=0):
+    def flow_map(self, grid=None, wd=None, ws=None, time=None):
         """Return a FlowMap object with WS_eff and TI_eff of all grid points
 
         Parameters
@@ -736,18 +736,6 @@ class SimulationResult(xr.Dataset):
             Grid, e.g. HorizontalGrid or\n
             tuple(X, Y, x, y, h) where X, Y is the meshgrid for visualizing data\n
             and x, y, h are the flattened grid points
-        wd : int, float, array_like or None
-            Wind directions to include in the flow map (if more than one, an weighted average will be computed)
-            The simulation result must include the requested wind directions.
-            If None, an weighted average of all wind directions from the simulation results will be computed.
-            Note, computing a flow map with multiple wind directions may be slow
-        ws : int, float, array_like or None
-            Same as "wd", but for wind speed
-        ws : int, array_like or None
-            Same as "wd", but for time
-        D_dst : int, float or None
-            In combination with a rotor average model, D_dst defines the downstream rotor diameter
-            at which the deficits will be averaged
 
         See Also
         --------
@@ -762,7 +750,7 @@ class SimulationResult(xr.Dataset):
         for k in self.__slots__:
             setattr(sim_res, k, getattr(self, k))
 
-        lw_j, WS_eff_jlk, TI_eff_jlk = self.windFarmModel._flow_map(x_j, y_j, h_j, sim_res, D_dst=D_dst)
+        lw_j, WS_eff_jlk, TI_eff_jlk = self.windFarmModel._flow_map(x_j, y_j, h_j, sim_res)
         return FlowMap(sim_res, X, Y, lw_j, WS_eff_jlk, TI_eff_jlk, plane=plane)
 
     def _wd_ws(self, wd, ws):
@@ -794,17 +782,8 @@ class SimulationResult(xr.Dataset):
                                    WS_eff_ilk=ds.WS_eff.ilk(), TI_eff_ilk=ds.TI_eff.ilk(), power_ilk=ds.Power.ilk(), ct_ilk=ds.CT.ilk(),
                                    **{k: v.ilk() for k, v in ds.items()
                                       if k not in {'wd_bin_size', 'ws_l', 'ws_u', 'WS_eff', 'TI_eff', 'Power', 'CT'}})
-        for k, v in ds.items():
-            if k not in sim_res:
-                sim_res[k] = v
 
         return sim_res
-
-    def sel(self, indexers=None, method=None, tolerance=None, drop=False, **indexers_kwargs):
-        res = xr.Dataset.sel(self, indexers=indexers, method=method, tolerance=tolerance, drop=drop, **indexers_kwargs)
-        for n in self.__slots__:
-            setattr(res, n, getattr(self, n, None))
-        return res
 
 
 def main():

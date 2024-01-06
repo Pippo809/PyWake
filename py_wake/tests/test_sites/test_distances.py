@@ -16,8 +16,6 @@ from py_wake.examples.data.hornsrev1 import V80
 from py_wake.tests.test_wind_farm_models.test_enginering_wind_farm_model import OperatableV80
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
-from py_wake.deficit_models.utils import ct2a_mom1d
-import warnings
 
 
 class FlatSite(UniformSite):
@@ -167,14 +165,10 @@ def test_straightDistance_turning(wfm_cls, turning, method, angle_func):
     operation = [1, 1] + ([0] * len(ghost_x))
     WD = np.array(np.r_[turning, [0] * len(ghost_y)]) + 270
     sim_res = wfm(np.r_[[0, 500], ghost_x], np.r_[[0, 0], ghost_y], operating=operation, wd=[0, 270], WD=WD)
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', UserWarning)
-        fm_wide = sim_res.flow_map(XYGrid(x=450, y=np.linspace(-200, 200, 1001)), wd=270)
+    fm_wide = sim_res.flow_map(XYGrid(x=450, y=np.linspace(-200, 200, 1001)), wd=270)
 
     y = fm_wide.y[np.argmin(fm_wide.WS_eff.squeeze().values)]
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', UserWarning)
-        fm = sim_res.flow_map(XYGrid(x=450, y=np.linspace(y - 2, y + 2, 1001)), wd=270)
+    fm = sim_res.flow_map(XYGrid(x=450, y=np.linspace(y - 2, y + 2, 1001)), wd=270)
 
     if 0:
         ax1, ax2 = plt.subplots(1, 2)[1]
@@ -231,7 +225,7 @@ def test_distance_over_rectangle():
     x, y = [-100, 50], [200, -100]
     windTurbines = IEA37_WindTurbines()
     site = Rectangle(height=200, width=100, distance_resolution=100)
-    wf_model = NOJ(site, windTurbines, ct2a=ct2a_mom1d)
+    wf_model = NOJ(site, windTurbines)
     sim_res = wf_model(x, y, wd=[270], ws=[9])
     x_j = np.linspace(-100, 500, 50)
     y_j = np.linspace(-200, 300, 50)

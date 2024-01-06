@@ -16,12 +16,10 @@ from scipy.interpolate._cubic import PchipInterpolator as scipy_PchipInterpolato
 
 from itertools import count
 from scipy.interpolate import UnivariateSpline as scipy_UnivariateSpline
-
-
+from scipy.special import erf as scipy_erf
+from autograd.scipy.special import erf as autograd_erf
 from py_wake.utils.numpy_utils import AutogradNumpy
 from autograd.numpy.numpy_vjps import unbroadcast_f
-from scipy.special import gamma as sgamma
-from autograd.scipy.special import gamma as agamma
 
 
 def asarray(x, dtype=None, order=None):
@@ -305,10 +303,8 @@ class UnivariateSpline(scipy_UnivariateSpline):
 
 def erf(z):
     if isinstance(z, ArrayBox):
-        from autograd.scipy.special import erf as autograd_erf
         return autograd_erf(z)
     else:
-        from scipy.special import erf as scipy_erf
         return scipy_erf(z)
 
 
@@ -376,10 +372,3 @@ def rad2deg(rad):
 
 def deg2rad(deg):
     return deg * np.pi / 180
-
-
-def gamma(x):
-    if isinstance(x, ArrayBox):
-        return agamma(x)
-    else:
-        return sgamma(x)

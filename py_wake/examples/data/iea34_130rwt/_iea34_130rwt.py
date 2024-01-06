@@ -10,7 +10,6 @@ from py_wake.utils.model_utils import fix_shape
 from py_wake.utils.gradients import hypot
 from py_wake.wind_turbines.power_ct_functions import AdditionalModel
 from autograd.numpy.numpy_boxes import ArrayBox
-from py_wake.utils.tensorflow_surrogate_utils import TensorFlowModel
 from py_wake.utils import gradients
 
 
@@ -18,13 +17,14 @@ class IEA34_130_PowerCtSurrogate(PowerCtSurrogate):
     def __init__(self, surrogate_path, input_parser):
         PowerCtSurrogate.__init__(
             self,
-            power_surrogate=TensorFlowModel.load_h5(surrogate_path / "electrical_power_operating.h5"),
+            power_surrogate=TensorflowSurrogate.from_dtu_json(surrogate_path / "electrical_power", 'operating'),
             power_unit='W',
-            ct_surrogate=TensorFlowModel.load_h5(surrogate_path / 'thrust_operating.h5'),
+            ct_surrogate=TensorflowSurrogate.from_dtu_json(surrogate_path / 'thrust', 'operating'),
             input_parser=input_parser)
 
-        self.ws_cutin = self.function_surrogate_lst[0].metadata['wind_speed_cut_in']
-        self.ws_cutout = self.function_surrogate_lst[0].metadata['wind_speed_cut_out']
+        ws_idx = self.function_surrogate_lst[0].input_channel_names.index('ws')
+        self.ws_cutin = self.function_surrogate_lst[0].input_scaler.data_min_[ws_idx]  # .wind_speed_cut_in
+        self.ws_cutout = self.function_surrogate_lst[0].input_scaler.data_max_[ws_idx]  # .wind_speed_cut_out
         ti_key = [k for k in list(inspect.signature(input_parser).parameters) if k[:2] == 'TI'][0]
         thrust_idle = PowerCtSurrogate._power_ct(self, np.array([self.ws_cutout]), run_only=1, **{ti_key: .1}) * 1000
         self.ct_idle = thrust_idle / (1 / 2 * 1.225 * (65**2 * np.pi) * self.ws_cutout**2)
@@ -84,12 +84,12 @@ class SimpleYawModelLoadSurrogate():
 
 class ThreeRegionLoadSurrogates(FunctionSurrogates):
     def __init__(self, function_surrogate_lst, input_parser, yaw_model=None):
-        output_keys = [fs[0].output_names for fs in function_surrogate_lst]
+        output_keys = [fs[0].output_channel_name for fs in function_surrogate_lst]
         if yaw_model is not None:
             input_parser = yaw_model.yaw_decorator(input_parser)
         FunctionSurrogates.__init__(self, function_surrogate_lst, input_parser, output_keys)
-        self.ws_cutin = function_surrogate_lst[0][0].metadata['wind_speed_cut_in']
-        self.ws_cutout = function_surrogate_lst[0][0].metadata['wind_speed_cut_out']
+        self.ws_cutin = function_surrogate_lst[0][0].wind_speed_cut_in
+        self.ws_cutout = function_surrogate_lst[0][0].wind_speed_cut_out
         self.yaw_model = yaw_model
 
     def __call__(self, ws, run_only=slice(None), **kwargs):
@@ -120,7 +120,7 @@ class ThreeRegionLoadSurrogates(FunctionSurrogates):
 
     @property
     def wohler_exponents(self):
-        return [fs[0].metadata['wohler_exponent'] for fs in self.function_surrogate_lst]
+        return [fs[0].wohler_exponent for fs in self.function_surrogate_lst]
 
 
 class IEA34_130_Base(WindTurbine):
@@ -140,7 +140,7 @@ class IEA34_130_1WT_Surrogate(IEA34_130_Base):
     def __init__(self):
         surrogate_path = Path(example_data_path) / 'iea34_130rwt' / 'one_turbine'
         loadFunction = ThreeRegionLoadSurrogates(
-            [[TensorFlowModel.load_h5(surrogate_path / f'{s}_{n}.h5')
+            [[TensorflowSurrogate.from_dtu_json(surrogate_path / s, n)
               for n in self.set_names] for s in self.load_sensors],
             input_parser=lambda ws, TI_eff=.1, Alpha=0: [ws, TI_eff, Alpha])
         powerCtFunction = IEA34_130_PowerCtSurrogate(
@@ -153,7 +153,7 @@ class IEA34_130_2WT_Surrogate(IEA34_130_Base):
     def __init__(self, yaw_model=SimpleYawModelLoadSurrogate):
         surrogate_path = Path(example_data_path) / 'iea34_130rwt' / 'two_turbines'
         loadFunction = ThreeRegionLoadSurrogates(
-            [[TensorFlowModel.load_h5(surrogate_path / f'{s}_{n}.h5')
+            [[TensorflowSurrogate.from_dtu_json(surrogate_path / s, n)
               for n in self.set_names] for s in self.load_sensors],
             input_parser=self.get_input,
             yaw_model=yaw_model)

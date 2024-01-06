@@ -259,40 +259,22 @@ class XRSite(Site):
         return xr_site
 
     @classmethod
-    def from_pwc(cls, pwc, method_speedup='park', drop_vars=None, **kwargs):
-        """Instantiate XRSite from a pywasp predicted wind climate (PWC) xr.Dataset or from
-        New European Wind Atlas predicted wind climate xr.Dataset.
+    def from_pywasp_pwc(cls, pwc, **kwargs):
+        """Instanciate XRSite from a pywasp predicted wind climate (PWC) xr.Dataset
 
         Parameters
         ----------
         pwc : xr.Dataset
             pywasp predicted wind climate dataset. At a minimum should contain
             "A", "k", and "wdfreq".
-        method_speedup : str
-            method of establishing speedups. should be either 'park', 'global_weibull' or 'existing'.
-            the 'park' method calculates speedups based on the maximum sector-wise mean wind speeds. this method is
-            used for calculation of aep with wasp/pywasp using the park model, and not for calculting aep with pywake.
-            the 'global_weibull' calculates speedups based on the mean of the most central weibull for each sector.
-            With the 'existing' method the data variable "Speedup" should already be present in the xarray.
-        drop_vars : list of str
-            list of not needed variable names to be removed
 
         """
         pwc = pwc.copy()
-        # Check if sector probability is given in %
-        if np.isclose(pwc.wdfreq.sum('sector').mean(), 100):
-            pwc['wdfreq'] = pwc['wdfreq'] / 100
-        if drop_vars is None:
-            drop_vars = []
+
         # Drop coordinates that are not needed
         for coord in ["sector_floor", "sector_ceil", "crs"]:
             if coord in pwc.coords:
                 pwc = pwc.drop_vars(coord)
-
-        # Drop variables that are not needed
-        for var in drop_vars:
-            if var in pwc.data_vars:
-                pwc = pwc.drop_vars(var)
 
         # Get the spatial dims
         if "point" in pwc.dims:
@@ -311,19 +293,7 @@ class XRSite(Site):
             weibull.mean, pwc["A"], pwc["k"], dask="allowed"
         )
 
-        if method_speedup == 'park':
-            pwc["Speedup"] = ws_mean / ws_mean.max(dim=xy_dims)
-        elif method_speedup == 'global_weibull':
-            median = pwc.median(dim=xy_dims)
-            pwc["Speedup"] = ws_mean / xr.apply_ufunc(weibull.mean, median["A"], median["k"], dask="allowed")
-            weib_dims = list(ws_mean.dims)
-            for dim in xy_dims:
-                weib_dims.remove(dim)
-            pwc['A'] = (weib_dims, median['A'].values)
-            pwc['k'] = (weib_dims, median['k'].values)
-        elif method_speedup == 'existing':
-            if "Speedup" not in pwc.data_vars:
-                raise Exception('with the method_speedup = "existing" "Speedup" needs to be present as a data variable')
+        pwc["Speedup"] = ws_mean / ws_mean.max(dim=xy_dims)
 
         # Add TI if not already present
         for var in ["turbulence_intensity"]:
@@ -356,15 +326,14 @@ class UniformSite(XRSite):
     constant wind speed probability of 1. Only for one fixed wind speed
     """
 
-    def __init__(self, p_wd=[1], ti=0.1, ws=12, interp_method='nearest', shear=None, initial_position=None,
-                 distance=None):
+    def __init__(self, p_wd=[1], ti=0.1, ws=12, interp_method='nearest', shear=None, initial_position=None):
         ds = xr.Dataset(
             data_vars={'P': ('wd', p_wd)},
             coords={'wd': np.linspace(0, 360, len(p_wd), endpoint=False)})
         if ti is not None:
             ds['TI'] = ti
         XRSite.__init__(self, ds, interp_method=interp_method, shear=shear, initial_position=initial_position,
-                        default_ws=np.atleast_1d(ws), distance=distance)
+                        default_ws=np.atleast_1d(ws))
 
 
 class UniformWeibullSite(XRSite):
@@ -372,7 +341,7 @@ class UniformWeibullSite(XRSite):
     weibull distributed wind speed
     """
 
-    def __init__(self, p_wd, a, k, ti=None, interp_method='nearest', shear=None, distance=None):
+    def __init__(self, p_wd, a, k, ti=None, interp_method='nearest', shear=None):
         """Initialize UniformWeibullSite
 
         Parameters
@@ -390,9 +359,6 @@ class UniformWeibullSite(XRSite):
             method
         shear : Shear object
             Shear object, e.g. NoShear(), PowerShear(h_ref, alpha)
-        distance: Distance object or None
-            Distance object to calculate the distance between wind turbines.
-            Defaults to StaightDistance based on reference wind direction
 
         Notes
         ------
@@ -405,7 +371,7 @@ class UniformWeibullSite(XRSite):
             coords={'wd': np.linspace(0, 360, len(p_wd), endpoint=False)})
         if ti is not None:
             ds['TI'] = ti
-        XRSite.__init__(self, ds, interp_method=interp_method, shear=shear, distance=distance)
+        XRSite.__init__(self, ds, interp_method=interp_method, shear=shear)
 
 
 class GlobalWindAtlasSite(XRSite):
@@ -434,8 +400,10 @@ class GlobalWindAtlasSite(XRSite):
 
     def _read_gwc(self, lat, long):  # pragma: no cover
 
-        url = f'https://api.globalwindatlas.info/gwa3/v1/get-libfile-point?latitude={lat}&longitude={long}'
-        lines = urllib.request.urlopen(url).read().decode().strip().split("\n")
+        url_str = f'https://wps.globalwindatlas.info/?service=WPS&VERSION=1.0.0&REQUEST=Execute&IDENTIFIER=get_libfile&DataInputs=location={{"type":"Point","coordinates":[{long},{lat}]}}'
+        s = urllib.request.urlopen(url_str).read().decode()  # response contains link to generated file
+        url = s[s.index('http://wps.globalwindatlas.info'):].split('"')[0]
+        lines = urllib.request.urlopen(url).read().decode().strip().split("\r\n")
 
         # Read header information one line at a time
         # desc = txt[0].strip()  # File Description

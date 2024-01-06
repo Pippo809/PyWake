@@ -6,7 +6,7 @@ import xarray as xr
 from py_wake.examples.data import hornsrev1, example_data_path
 from py_wake.tests import npt
 from py_wake.wind_turbines.power_ct_functions import CubePowerSimpleCt, PowerCtNDTabular, DensityScale, \
-    PowerCtTabular, PowerCtFunction, PowerCtFunctionList, PowerCtXr, DensityCompensation, PowerCtWindPro
+    PowerCtTabular, PowerCtFunction, PowerCtFunctionList, PowerCtXr, DensityCompensation
 from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction
 from py_wake.utils.model_utils import fix_shape
 from py_wake.utils.gradients import cs, autograd, fd
@@ -392,33 +392,6 @@ def test_SimpleYawModel():
             npt.assert_allclose(dpctdu_lst[1], dpctdu_lst[2])
 
 
-def test_SimpleYawModel2():
-    u_p, p_c = np.asarray(hornsrev1.power_curve).T.copy()
-    _, ct_c = hornsrev1.ct_curve.T
-    curve = PowerCtTabular(ws=u_p, power=p_c, power_unit='w', ct=ct_c, method='linear')
-    u = np.arange(4, 25, 1.1)
-    yaw = 30
-    theta = np.deg2rad(yaw)
-    co = np.cos(theta)
-    p, ct = curve(u, yaw=yaw)
-    npt.assert_array_almost_equal(p, np.interp(u * co, u_p, p_c))
-    npt.assert_array_almost_equal(ct, np.interp(u * co, u_p, ct_c) * co**2)
-    p, ct = curve(u, tilt=yaw)
-    npt.assert_array_almost_equal(p, np.interp(u * co, u_p, p_c))
-    npt.assert_array_almost_equal(ct, np.interp(u * co, u_p, ct_c) * co**2)
-
-    y = np.rad2deg(np.arctan(np.tan(np.deg2rad(yaw)) * np.cos(np.deg2rad(20))))
-    t = np.rad2deg(np.arctan(np.tan(np.deg2rad(yaw)) * np.sin(np.deg2rad(20))))
-    gamma = np.deg2rad(20)
-    theta = np.deg2rad(30)
-    t = np.rad2deg(np.arcsin(np.sin(theta) * np.sin(gamma)))
-    y = np.rad2deg(np.arcsin(np.cos(gamma) * np.sin(theta) / np.sqrt(1 - (np.sin(gamma) * np.sin(theta))**2)))
-
-    p, ct = curve(u, tilt=t, yaw=y)
-    npt.assert_array_almost_equal(p, np.interp(u * co, u_p, p_c))
-    npt.assert_array_almost_equal(ct, np.interp(u * co, u_p, ct_c) * co**2)
-
-
 def test_DensityScaleAndSimpleYawModel():
     u_p, p_c = np.asarray(hornsrev1.power_curve).T.copy()
     _, ct_c = hornsrev1.ct_curve.T
@@ -439,105 +412,6 @@ def test_DensityScaleAndSimpleYawModel():
                           for grad in [fd, cs, autograd]]
             npt.assert_allclose(dpctdu_lst[0], dpctdu_lst[1], rtol=1e-4)
             npt.assert_allclose(dpctdu_lst[1], dpctdu_lst[2])
-
-
-def test_PowerCtWindPro():
-    ws_p_cp = """Vindhastighed [m/s]    Effekt [kW]    Cp
-3.00    42.00    0.123
-3.50    113.00    0.209
-4.00    254.00    0.314
-4.50    426.00    0.370
-5.00    633.00    0.401
-5.50    883.00    0.420
-6.00    1,189.00    0.436
-6.50    1,549.00    0.447
-7.00    1,969.00    0.455
-7.50    2,449.00    0.460
-8.00    2,994.00    0.463
-8.50    3,607.00    0.465
-9.00    4,277.00    0.465
-9.50    4,914.00    0.454
-10.00    5,519.00    0.437
-10.50    6,098.00    0.417
-11.00    6,647.00    0.396
-11.50    7,015.00    0.365
-12.00    7,158.00    0.328
-12.50    7,189.00    0.292
-13.00    7,198.00    0.260
-13.50    7,200.00    0.232
-14.00    7,200.00    0.208
-14.50    7,200.00    0.187
-15.00    7,200.00    0.169
-15.50    7,200.00    0.153
-16.00    7,200.00    0.139
-16.50    7,200.00    0.127
-17.00    7,200.00    0.116
-17.50    7,200.00    0.106
-18.00    7,200.00    0.098
-18.50    7,191.00    0.090
-19.00    7,113.00    0.082
-19.50    6,956.00    0.074
-20.00    6,682.00    0.066
-20.50    6,305.00    0.058
-21.00    5,865.00    0.050
-21.50    5,397.00    0.043
-22.00    4,928.00    0.037
-22.50    4,459.00    0.031
-23.00    3,984.00    0.026
-23.50    3,514.00    0.021
-24.00    3,049.00    0.017
-24.50    2,598.00    0.014
-25.00    2,202.00    0.011"""
-    ws_ct = """Vindhastighed [m/s]    Ct
-3.00    0.930
-3.50    0.871
-4.00    0.846
-4.50    0.830
-5.00    0.812
-5.50    0.805
-6.00    0.806
-6.50    0.808
-7.00    0.808
-7.50    0.807
-8.00    0.804
-8.50    0.801
-9.00    0.787
-9.50    0.734
-10.00    0.671
-10.50    0.615
-11.00    0.566
-11.50    0.508
-12.00    0.444
-12.50    0.384
-13.00    0.336
-13.50    0.296
-14.00    0.262
-14.50    0.234
-15.00    0.210
-15.50    0.190
-16.00    0.172
-16.50    0.157
-17.00    0.143
-17.50    0.132
-18.00    0.122
-18.50    0.112
-19.00    0.102
-19.50    0.093
-20.00    0.083
-20.50    0.073
-21.00    0.064
-21.50    0.056
-22.00    0.048
-22.50    0.041
-23.00    0.036
-23.50    0.030
-24.00    0.026
-24.50    0.022
-25.00    0.018    """
-    curve = PowerCtWindPro(ws_p_cp, ws_ct)
-    p, ct = curve(18.5)
-    assert p == 7191000
-    assert ct == 0.112
 
 
 if __name__ == '__main__':

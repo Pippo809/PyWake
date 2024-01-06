@@ -7,7 +7,6 @@ import pytest
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
 from py_wake.tests import npt
 import numpy as np
-from py_wake.deficit_models.utils import ct2a_mom1d
 
 
 def test_multirotor_windturbine_not_instantiated():
@@ -23,7 +22,7 @@ def test_multirotor(wfm_cls):
                                          [-50, 10, 0]  # 2: left rotor
                                          ])
 
-    wfm = wfm_cls(site=UniformSite(), windTurbines=wts, wake_deficitModel=BastankhahGaussianDeficit(ct2a=ct2a_mom1d),
+    wfm = wfm_cls(site=UniformSite(), windTurbines=wts, wake_deficitModel=BastankhahGaussianDeficit(),
                   inputModifierModels=MultiRotor())
 
     sim_res = wfm([0, 0, 500], [0, 0, 0], type=[1, 2, 0], wd=[0, 90, 180, 270])
@@ -31,15 +30,14 @@ def test_multirotor(wfm_cls):
         for wd, ax in zip(sim_res.wd, plt.subplots(2, 2)[1].flatten()):
             sim_res.flow_map(wd=wd).plot_wake_map(ax=ax)
         plt.show()
-    wfm = All2AllIterative(site=UniformSite(), windTurbines=wts,
-                           wake_deficitModel=BastankhahGaussianDeficit(ct2a=ct2a_mom1d))
+    wfm = All2AllIterative(site=UniformSite(), windTurbines=wts, wake_deficitModel=BastankhahGaussianDeficit())
     sim_res2 = wfm([[50, -10, -50, 10], [-50, -10, 50, 10], [500, 500, 500, 500]],
                    [[-10, -50, 10, 50], [-10, 50, 10, -50], [0, 0, 0, 0]],
                    wd=[0, 90, 180, 270])
 
     for k in ['x', 'y']:
         npt.assert_array_almost_equal(sim_res[k], sim_res2[k], 10)
-    npt.assert_array_almost_equal(sim_res.WS_eff, sim_res2.WS_eff, 4)
+    npt.assert_array_almost_equal(sim_res.WS_eff, sim_res2.WS_eff, 5)
 
 
 @pytest.mark.parametrize('wfm_cls', [PropagateDownwind, All2AllIterative])
@@ -49,7 +47,7 @@ def test_multirotor_deficit_profile(wfm_cls):
                                          [-50, 10, 0]  # 2: left rotor
                                          ])
 
-    wfm = wfm_cls(site=UniformSite(), windTurbines=wts, wake_deficitModel=BastankhahGaussianDeficit(ct2a=ct2a_mom1d),
+    wfm = wfm_cls(site=UniformSite(), windTurbines=wts, wake_deficitModel=BastankhahGaussianDeficit(),
                   inputModifierModels=MultiRotor())
     sim_res = wfm([0, 0, 500], [0, 0, 0], type=[1, 2, 0], wd=np.linspace(250, 290, 11))
     if 0:

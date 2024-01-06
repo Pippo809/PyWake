@@ -17,7 +17,7 @@ class Model():
 class XRLUTModel(Model):
     """Model based on xarray.dataarray look-up table with linear interpolation"""
 
-    def __init__(self, da, get_input=None, get_output=None, method='linear', bounds='limit'):
+    def __init__(self, da, get_input=None, get_output=None, bounds='limit'):
         """
         Parameters
         ----------
@@ -38,23 +38,21 @@ class XRLUTModel(Model):
             names of the PyWake inputs should match the names of the default PyWake keyword arguments,
             e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
             The function should return deficit_ijlk
-        method : {'linear' or 'nearest} or [{'linear' or 'nearest}, ...]
-            interpolation method
         bounds : {'limit', 'check', 'ignore'}
             how to handle out-of-bounds coordinate interpolation, see GridInterpolator
         """
         self.da = da
-        self._args4model = getattr(self, '_args4model', set())
         if get_input:
             self.get_input = get_input
+            self._args4model = set()
         else:
-            self._args4model |= set(self.da.dims)
+            self._args4model = set(self.da.dims)
         if get_output:
             self.get_output = get_output
         self._args4model |= (set(inspect.getfullargspec(self.get_input).args) |
-                             set(inspect.getfullargspec(self.get_output).args)) - {'self', 'output_ijlk'}
+                             set(inspect.getfullargspec(self.get_output).args) - {'self'})
 
-        self.interp = GridInterpolator([da[k].values for k in da.dims], da.values, method=method, bounds=bounds)
+        self.interp = GridInterpolator([da[k].values for k in da.dims], da.values, bounds=bounds)
 
     @property
     def args4model(self):
@@ -75,7 +73,7 @@ class XRLUTModel(Model):
 
     def __call__(self, **kwargs):
         input_ijlk = self.get_input(**kwargs)
-        IJLK = tuple(np.max([inp.shape for inp in input_ijlk], 0))
+        IJLK = np.max([inp.shape for inp in input_ijlk], 0)
         output_ijlk = self.interp(np.array([np.broadcast_to(inp, IJLK).flatten()
                                             for inp in input_ijlk]).T).reshape(IJLK)
         return self.get_output(output_ijlk, **kwargs)
@@ -83,9 +81,8 @@ class XRLUTModel(Model):
 
 class DeprecatedModel():
     def __init__(self, new_model):
-        warnings.warn(
-            f"""The {self.__class__.__name__} model is not representative of the setup used in the literature. For this, use {new_model} instead""",
-            stacklevel=2)
+        warnings.warn(f"""{self.__module__}.{self.__class__.__name__} is deprecated. Use {new_model} instead""",
+                      DeprecationWarning, stacklevel=2)
 
 
 class ModelMethodWrapper():
@@ -137,7 +134,6 @@ def get_exclude_dict():
     from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
     from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel
     from py_wake.wind_farm_models.engineering_models import EngineeringWindFarmModel, PropagateDownwind
-    from py_wake.deflection_models.deflection_model import DeflectionIntegrator
 
     from py_wake.superposition_models import LinearSum
     from py_wake.deficit_models.noj import NOJDeficit
@@ -146,14 +142,13 @@ def get_exclude_dict():
     from py_wake.site.jit_streamline_distance import JITStreamlineDistance
     return {
         "WindFarmModel": ([EngineeringWindFarmModel], [], PropagateDownwind),
-        "EngineeringWindFarmModel": ([], [], PropagateDownwind),
         "DeficitModel": ([ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel, XRLUTDeficitModel],
                          [RotorAvgModel], NOJDeficit),
         "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel], [RotorAvgModel], NOJDeficit),
         "RotorAvgModel": ([NodeRotorAvgModel], [], None),
         "SuperpositionModel": ([], [], LinearSum),
         "BlockageDeficitModel": ([XRLUTDeficitModel], [], None),
-        "DeflectionModel": ([DeflectionIntegrator], [], None),
+        "DeflectionModel": ([], [], None),
         "TurbulenceModel": ([XRLUTTurbulenceModel], [], None),
         "AddedTurbulenceSuperpositionModel": ([], [], None),
         "GroundModel": ([], [], NoGround),
@@ -167,7 +162,7 @@ def cls_in(A, cls_lst):
     return str(A) in map(str, cls_lst)
 
 
-def get_models(base_class, exclude_None=False):
+def get_models(base_class):
     if base_class is Site:
         from py_wake.examples.data.iea37._iea37 import IEA37Site
         from py_wake.examples.data.hornsrev1 import Hornsrev1Site
@@ -198,8 +193,6 @@ def get_models(base_class, exclude_None=False):
     if default is not None:
         model_lst.remove(model_lst[[m.__name__ for m in model_lst].index(default.__name__)])
     model_lst.insert(0, default)
-    if exclude_None and None in model_lst:
-        model_lst.remove(None)
     return model_lst
 
 
@@ -219,9 +212,6 @@ def get_signature(cls, kwargs={}, indent_level=0):
             arg_value = sig.parameters[n].default
             if 'object at' in str(arg_value):
                 arg_value = get_signature(arg_value.__class__, indent_level=(indent_level + 1, 0)[indent_level == 0])
-            elif '<function' in str(arg_value) and 'at 0x' in str(arg_value):
-                # arg_value = get_signature(arg_value, indent_level=(indent_level + 1, 0)[indent_level == 0])
-                arg_value = arg_value.__name__
             elif isinstance(arg_value, str):
                 arg_value = "'%s'" % arg_value
         else:

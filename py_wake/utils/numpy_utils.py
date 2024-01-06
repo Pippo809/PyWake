@@ -28,7 +28,7 @@ class Cast32Wrapper():
     def __call__(self, *args, **kwargs):
         try:
             return self.f(*args, **{'dtype': self.float, **kwargs})
-        except (TypeError, ValueError):  # f does not take dtype argument or conversion fails, e.g. str->float
+        except TypeError:  # f does not take dtype argument
             res = self.f(*args, **kwargs)
 
             try:
@@ -42,7 +42,7 @@ class Numpy32(NumpyBackend):
 
     def __init__(self):
         wrapped_functions = {k: Cast32Wrapper(f) for k, f in self.backend.__dict__.items()
-                             if not (isinstance(f, (type, int, float, RClass)) or f is None or inspect.ismodule(f))}
+                             if not(isinstance(f, (type, int, float, RClass)) or f is None or inspect.ismodule(f))}
         self.__dict__ = {**self.backend.__dict__, **wrapped_functions}
         self.float = numpy.float32
         self.complex = numpy.complex64
