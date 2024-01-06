@@ -496,8 +496,7 @@ class CubePowerSimpleCt(PowerCtFunctions):
 
 
 class PowerCtSurrogate(PowerCtFunction, FunctionSurrogates):
-    def __init__(self, power_surrogate, power_unit, ct_surrogate, input_parser, additional_models=[]):
-
+    def __init__(self, power_surrogate, power_unit, ct_surrogate, input_parser, additional_models=default_additional_models):
         assert (not hasattr(power_surrogate, 'input_channel_names') or
                 power_surrogate.input_channel_names == ct_surrogate.input_channel_names)
 

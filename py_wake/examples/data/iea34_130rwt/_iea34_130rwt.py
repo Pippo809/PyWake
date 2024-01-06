@@ -1,14 +1,17 @@
 from py_wake.wind_turbines import WindTurbine
 from py_wake import np
 from pathlib import Path
+from py_wake.utils.tensorflow_surrogate_utils import TensorflowSurrogate
 import inspect
 from py_wake.wind_turbines.power_ct_functions import PowerCtSurrogate
 from py_wake.wind_turbines.wind_turbine_functions import FunctionSurrogates
 from py_wake.examples.data import example_data_path
 from py_wake.utils.model_utils import fix_shape
 from py_wake.utils.gradients import hypot
+from py_wake.wind_turbines.power_ct_functions import AdditionalModel
 from autograd.numpy.numpy_boxes import ArrayBox
 from py_wake.utils.tensorflow_surrogate_utils import TensorFlowModel
+from py_wake.utils import gradients
 
 
 class IEA34_130_PowerCtSurrogate(PowerCtSurrogate):
@@ -51,16 +54,49 @@ class IEA34_130_PowerCtSurrogate(PowerCtSurrogate):
                 return ct
 
 
+class SimpleYawModelLoadSurrogate():
+    """Simple model that replace scales the output with cos(yaw)**2"""
+
+    def __init__(self):
+        self.output_keys = ['del_blade_flap', 'del_blade_edge', 'del_tower_bottom_fa', 'del_tower_bottom_ss',
+                            'del_tower_top_torsion']
+        self.decrease_keys = ['del_blade_flap', 'del_blade_edge', 'del_tower_bottom_fa', 'del_tower_bottom_ss']
+        self.increase_keys = ['del_tower_top_torsion']
+
+    def __call__(self, del_vals, yaw=None, **kwargs):
+        co = 1
+        if yaw is not None:
+            co *= np.cos(gradients.deg2rad(yaw))**2
+        out = []
+        for del_val, key in zip(del_vals, self.output_keys):
+            if key in self.decrease_keys:
+                out.append(del_val * co)
+            elif key in self.increase_keys:
+                out.append(del_val / co)
+        return out
+
+    @staticmethod
+    def yaw_decorator(func):
+        def wrapper(ws, dw_ijlk, hcw_ijlk, TI, yaw, Alpha=0):
+            return [*func(ws, dw_ijlk, hcw_ijlk, TI, Alpha), yaw]
+        return wrapper
+
+
 class ThreeRegionLoadSurrogates(FunctionSurrogates):
-    def __init__(self, function_surrogate_lst, input_parser):
+    def __init__(self, function_surrogate_lst, input_parser, yaw_model=None):
         output_keys = [fs[0].output_names for fs in function_surrogate_lst]
+        if yaw_model is not None:
+            input_parser = yaw_model.yaw_decorator(input_parser)
         FunctionSurrogates.__init__(self, function_surrogate_lst, input_parser, output_keys)
         self.ws_cutin = function_surrogate_lst[0][0].metadata['wind_speed_cut_in']
         self.ws_cutout = function_surrogate_lst[0][0].metadata['wind_speed_cut_out']
+        self.yaw_model = yaw_model
 
     def __call__(self, ws, run_only=slice(None), **kwargs):
         ws_flat = ws.ravel()
         x = self.get_input(ws=ws, **kwargs)
+        if self.yaw_model is not None:
+            x = x[:-1]
         x = np.array([fix_shape(v, ws).ravel() for v in x]).T
 
         def predict(fs):
@@ -69,9 +105,18 @@ class ThreeRegionLoadSurrogates(FunctionSurrogates):
                                    (self.ws_cutin <= ws_flat) & (ws_flat <= self.ws_cutout),
                                    ws_flat > self.ws_cutout]):
                 if m.sum():
-                    output[m] = fs_.predict_output(x[m])[:, 0]
+                    output[m] = fs_.predict_output(x[m], bounds='ignore')[:, 0]
             return output
-        return [predict(fs).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
+        del_vals = [predict(fs).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
+        if self.yaw_model is not None:
+            model = self.yaw_model()
+            yaw = kwargs.pop('yaw', None)
+            if yaw.ndim == 1:
+                yaw = yaw.reshape(1, -1)
+            assert yaw.shape == ws.shape == del_vals[0].shape
+            del_vals = model(del_vals, yaw)
+        return del_vals
+
 
     @property
     def wohler_exponents(self):
@@ -105,16 +150,15 @@ class IEA34_130_1WT_Surrogate(IEA34_130_Base):
 
 
 class IEA34_130_2WT_Surrogate(IEA34_130_Base):
-    def __init__(self):
+    def __init__(self, yaw_model=SimpleYawModelLoadSurrogate):
         surrogate_path = Path(example_data_path) / 'iea34_130rwt' / 'two_turbines'
         loadFunction = ThreeRegionLoadSurrogates(
             [[TensorFlowModel.load_h5(surrogate_path / f'{s}_{n}.h5')
               for n in self.set_names] for s in self.load_sensors],
-            input_parser=self.get_input)
-        # self.max_dist = loadFunction.function_surrogate_lst[0][0].input_scaler.data_max_[4]
-        # self.max_angle = loadFunction.function_surrogate_lst[0][0].input_scaler.data_max_[3]
-        self.max_dist = 773.7387854696
-        self.max_angle = 44.8850848847
+            input_parser=self.get_input,
+            yaw_model=yaw_model)
+        self.max_dist = loadFunction.function_surrogate_lst[0][0].input_scaler.data_max_[4]
+        self.max_angle = loadFunction.function_surrogate_lst[0][0].input_scaler.data_max_[3]
 
         powerCtFunction = IEA34_130_PowerCtSurrogate(
             surrogate_path,
